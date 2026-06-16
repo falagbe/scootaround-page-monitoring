@@ -1,0 +1,85 @@
+name: Booking Flow Monitor
+
+# Runs the synthetic monitoring suite automatically.
+on:
+  schedule:
+    # Daily at 12:00 UTC (07:00 Winnipeg CDT). Add more cron lines to run more
+    # often — e.g. '*/30 * * * *' for every 30 minutes once ad spend ramps up.
+    - cron: '0 12 * * *'
+  workflow_dispatch: {} # lets you run it on demand from the Actions tab
+  push:
+    branches: [main, master]
+
+jobs:
+  monitor:
+    name: Monitor booking flows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run monitoring suite
+        id: tests
+        env:
+          BASE_URL: ${{ vars.BASE_URL || 'https://d3kr993ddp3hq3.cloudfront.net' }}
+        run: npx playwright test --project=chromium
+
+      # Always keep the HTML report + failure screenshots/videos/traces.
+      - name: Upload report & evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 30
+
+      # Alert Teams only when something is broken.
+      - name: Notify Teams on failure
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "TEAMS_WEBHOOK_URL secret not set — skipping Teams alert."
+            exit 0
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -sf -H "Content-Type: application/json" -d @- "$TEAMS_WEBHOOK_URL" <<JSON
+          {
+            "type": "message",
+            "attachments": [{
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "content": {
+                "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                  { "type": "TextBlock", "size": "Large", "weight": "Bolder", "color": "Attention",
+                    "text": "🔴 Booking flow monitor FAILED" },
+                  { "type": "TextBlock", "wrap": true,
+                    "text": "One or more Scootaround location/port booking checks failed. A customer may be unable to complete a booking — investigate before ad spend is wasted." },
+                  { "type": "FactSet", "facts": [
+                    { "title": "Repository", "value": "${GITHUB_REPOSITORY}" },
+                    { "title": "Run", "value": "#${GITHUB_RUN_NUMBER}" }
+                  ]}
+                ],
+                "actions": [
+                  { "type": "Action.OpenUrl", "title": "View run & evidence", "url": "${RUN_URL}" }
+                ]
+              }
+            }]
+          }
+          JSON

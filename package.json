@@ -1,0 +1,15 @@
+{
+  "name": "scootaround-page-monitoring",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Synthetic monitoring of Scootaround location & port booking flows using Playwright. Simulates a customer end-to-end and runs daily via GitHub Actions.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "inspect": "node scripts/inspect-page.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
