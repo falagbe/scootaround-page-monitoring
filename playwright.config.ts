@@ -29,7 +29,9 @@ export default defineConfig({
     // Capture a screenshot for every check — passing screenshots become the
     // page thumbnails on the dashboard; failing ones become the evidence.
     screenshot: 'on',
-    video: 'retain-on-failure',
+    // Record video for every run so each page has a replay proving the booking
+    // flow was actually exercised — not just when something breaks.
+    video: 'on',
     trace: 'retain-on-failure',
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
