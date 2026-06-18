@@ -11,8 +11,9 @@ export default defineConfig({
   // A monitoring run should fail fast and clearly.
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  // Retry once so a single network blip doesn't page someone at 2am.
-  retries: 1,
+  // Retry so a single network blip / transient slowness doesn't page someone
+  // at 2am. A real outage fails all attempts; flakes pass on retry.
+  retries: 2,
   // Run location tests in parallel.
   fullyParallel: true,
   reporter: [

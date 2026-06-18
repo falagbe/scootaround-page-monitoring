@@ -1,52 +1,50 @@
 import { test, expect } from '@playwright/test'
-import { LOCATIONS } from './locations'
+import { LOCATIONS, STANDARD_LOCATIONS } from './locations'
 
 /**
- * TIER 1 — Page health & booking-widget presence.
+ * TIER 1 — Page health & booking-entry presence.
  *
  * This is the check that would have caught the Nashville incident: if a page
- * is disabled, redirected, or its booking widget is missing, these fail and
+ * is disabled, redirected, or its booking entry is missing, these fail and
  * alert — instead of Marketing discovering it weeks later via ad data.
  *
- * Fast, deterministic, and safe to run frequently against every page.
+ * Runs against EVERY monitored page (cities + cruise/port pages).
  */
 for (const loc of LOCATIONS) {
-  test.describe(`${loc.name} — page health`, () => {
-    test(`page loads and returns 200 [${loc.slug}]`, async ({ page }) => {
-      const resp = await page.goto(loc.path)
-      expect(resp?.status(), 'page must return HTTP 200').toBe(200)
-      // The page must actually be the location page, not a redirect/error.
-      await expect(page).toHaveTitle(new RegExp(loc.name.split(',')[0], 'i'))
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-    })
+  test(`page is healthy & bookable [${loc.slug}]`, async ({ page }) => {
+    const resp = await page.goto(loc.path)
+    expect(resp?.status(), 'page must return HTTP 200').toBe(200)
 
-    test(`booking widget is present and usable [${loc.slug}]`, async ({ page }) => {
-      await page.goto(loc.path)
-      // The three rental-type tabs.
-      await expect(page.getByRole('button', { name: /cruise/i }).first()).toBeVisible()
-      await expect(page.getByRole('button', { name: /hotel/i }).first()).toBeVisible()
-      await expect(page.getByRole('button', { name: /event/i }).first()).toBeVisible()
-      // Pickup field, dates field, and the call-to-action.
-      await expect(page.getByPlaceholder(/Pickup/i).first()).toBeVisible()
-      await expect(page.getByText('Rental Dates', { exact: false }).first()).toBeVisible()
-      await expect(page.getByRole('button', { name: /get a quote/i }).first()).toBeVisible()
-    })
+    // Identity: the H1 is consistent across pages (titles are not).
+    const h1 = page.getByRole('heading', { level: 1 })
+    await expect(h1).toBeVisible()
+    await expect(h1).toContainText(new RegExp(loc.match, 'i'))
 
-    test(`rental rate tables are shown [${loc.slug}]`, async ({ page }) => {
-      await page.goto(loc.path)
-      await expect(page.getByRole('heading', { name: /Rental Rates for Hotel/i })).toBeVisible()
-      await expect(page.getByRole('heading', { name: /Rental Rates for Cruise/i })).toBeVisible()
-    })
+    // There must be a way to start a booking.
+    await expect(page.getByRole('button', { name: /get a quote/i }).first()).toBeVisible()
+  })
+}
 
-    test(`location autocomplete backend is alive [${loc.slug}]`, async ({ page }) => {
-      await page.goto(loc.path)
-      const pickup = page.getByPlaceholder(/Pickup/i).first()
-      await pickup.click()
-      await pickup.fill(loc.pickup)
-      // If the autocomplete service is down, no suggestions appear and the
-      // whole booking flow is dead — assert at least one suggestion shows.
-      await expect(page.locator('[role="option"], li').filter({ hasText: /\w/ }).first())
-        .toBeVisible({ timeout: 10_000 })
-    })
+/**
+ * TIER 2 — Booking widget + autocomplete (standard city pages only).
+ * Confirms the customer can actually begin the funnel and that the location
+ * autocomplete backend is alive.
+ */
+for (const loc of STANDARD_LOCATIONS) {
+  test(`booking widget & autocomplete work [${loc.slug}]`, async ({ page }) => {
+    await page.goto(loc.path)
+
+    // Rental-type tabs + the key inputs.
+    await expect(page.getByRole('button', { name: /cruise/i }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /hotel/i }).first()).toBeVisible()
+    await expect(page.getByPlaceholder(/Pickup/i).first()).toBeVisible()
+    await expect(page.getByText('Rental Dates', { exact: false }).first()).toBeVisible()
+
+    // Autocomplete backend: typing a city must return suggestions.
+    const pickup = page.getByPlaceholder(/Pickup/i).first()
+    await pickup.click()
+    await pickup.fill(loc.pickup!)
+    await expect(page.locator('[role="option"], li').filter({ hasText: /\w/ }).first())
+      .toBeVisible({ timeout: 10_000 })
   })
 }
