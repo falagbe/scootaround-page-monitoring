@@ -26,8 +26,9 @@ export default defineConfig({
     // Base URL of the (pre-prod) site under test. Override per-environment
     // with the BASE_URL env var / GitHub secret.
     baseURL: process.env.BASE_URL || 'https://d3kr993ddp3hq3.cloudfront.net',
-    // Capture evidence only when something goes wrong.
-    screenshot: 'only-on-failure',
+    // Capture a screenshot for every check — passing screenshots become the
+    // page thumbnails on the dashboard; failing ones become the evidence.
+    screenshot: 'on',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
     actionTimeout: 15_000,
