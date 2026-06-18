@@ -7,6 +7,7 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "report": "playwright show-report",
+    "dashboard": "node scripts/build-dashboard.mjs",
     "inspect": "node scripts/inspect-page.mjs"
   },
   "devDependencies": {

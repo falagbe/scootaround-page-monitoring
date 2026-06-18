@@ -1,20 +1,32 @@
 name: Booking Flow Monitor
 
-# Runs the synthetic monitoring suite automatically.
 on:
   schedule:
     # Daily at 12:00 UTC (07:00 Winnipeg CDT). Add more cron lines to run more
     # often — e.g. '*/30 * * * *' for every 30 minutes once ad spend ramps up.
     - cron: '0 12 * * *'
-  workflow_dispatch: {} # lets you run it on demand from the Actions tab
+  workflow_dispatch: {} # run on demand from the Actions tab
   push:
     branches: [main, master]
+
+# Required to publish the dashboard to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   monitor:
     name: Monitor booking flows
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,19 +35,22 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
 
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
+      # Don't stop the job on failure — we still want to publish the dashboard
+      # and send the alert. We re-fail the job at the very end.
       - name: Run monitoring suite
         id: tests
+        continue-on-error: true
         env:
           BASE_URL: ${{ vars.BASE_URL || 'https://d3kr993ddp3hq3.cloudfront.net' }}
         run: npx playwright test --project=chromium
 
-      # Always keep the HTML report + failure screenshots/videos/traces.
+      - name: Build status dashboard
+        run: node scripts/build-dashboard.mjs
+
+      # Keep the full technical report (screenshots/video/trace) for engineers.
       - name: Upload report & evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -46,40 +61,29 @@ jobs:
             test-results/
           retention-days: 30
 
-      # Alert Teams only when something is broken.
+      # Publish the non-technical dashboard to GitHub Pages.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard
+      - name: Deploy dashboard to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      # Alert Teams only on failure, with the dashboard link + page screenshots.
       - name: Notify Teams on failure
-        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        if: ${{ steps.tests.outcome == 'failure' }}
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          DASHBOARD_URL: ${{ steps.deploy.outputs.page_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/notify-teams.mjs
+
+      # Surface the real result: make the run red if any check failed.
+      - name: Reflect test result
+        if: ${{ steps.tests.outcome == 'failure' }}
         run: |
-          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
-            echo "TEAMS_WEBHOOK_URL secret not set — skipping Teams alert."
-            exit 0
-          fi
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          curl -sf -H "Content-Type: application/json" -d @- "$TEAMS_WEBHOOK_URL" <<JSON
-          {
-            "type": "message",
-            "attachments": [{
-              "contentType": "application/vnd.microsoft.card.adaptive",
-              "content": {
-                "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                  { "type": "TextBlock", "size": "Large", "weight": "Bolder", "color": "Attention",
-                    "text": "🔴 Booking flow monitor FAILED" },
-                  { "type": "TextBlock", "wrap": true,
-                    "text": "One or more Scootaround location/port booking checks failed. A customer may be unable to complete a booking — investigate before ad spend is wasted." },
-                  { "type": "FactSet", "facts": [
-                    { "title": "Repository", "value": "${GITHUB_REPOSITORY}" },
-                    { "title": "Run", "value": "#${GITHUB_RUN_NUMBER}" }
-                  ]}
-                ],
-                "actions": [
-                  { "type": "Action.OpenUrl", "title": "View run & evidence", "url": "${RUN_URL}" }
-                ]
-              }
-            }]
-          }
-          JSON
+          echo "Monitoring checks failed — see the dashboard and report."
+          exit 1

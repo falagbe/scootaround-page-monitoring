@@ -19,6 +19,8 @@ export default defineConfig({
   reporter: [
     ['list'],
     ['html', { open: 'never', outputFolder: 'playwright-report' }],
+    // Feeds scripts/build-dashboard.mjs (the non-technical status dashboard).
+    ['json', { outputFile: 'results.json' }],
   ],
   use: {
     // Base URL of the (pre-prod) site under test. Override per-environment

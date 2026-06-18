@@ -3,6 +3,8 @@ playwright-report/
 test-results/
 blob-report/
 playwright/.cache/
+dashboard/
+results.json
 *.png
 *.zip
 .env

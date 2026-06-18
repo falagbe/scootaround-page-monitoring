@@ -37,15 +37,28 @@ BASE_URL=https://www.scootaround.com npm test
 
 Edit [`tests/locations.ts`](tests/locations.ts) and add an entry per location/port page. The full suite runs against each one automatically.
 
+## Status dashboard (for non-technical stakeholders)
+
+Every run publishes a visual **status dashboard** to GitHub Pages — a grid of all pages, green = operational / red = down, with the failure screenshot shown inline. No zip files or traces to open. Build it locally any time with:
+
+```bash
+npm test           # writes results.json
+npm run dashboard  # builds ./dashboard/index.html
+```
+
+**To enable the hosted dashboard:** in the repo, go to **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow then deploys to `https://<owner>.github.io/<repo>/` on each run.
+
+> ⚠️ GitHub Pages on a **private** repo requires GitHub Enterprise. If you're not on Enterprise, either make this repo public or host the dashboard from a separate public repo.
+
 ## Automated daily runs (GitHub Actions)
 
-The workflow in [`.github/workflows/monitor.yml`](.github/workflows/monitor.yml) runs the suite daily (and on demand). To enable alerting:
+The workflow in [`.github/workflows/monitor.yml`](.github/workflows/monitor.yml) runs the suite daily (and on demand), publishes the dashboard, and alerts on failure. To enable alerting:
 
 1. In Microsoft Teams, create an **Incoming Webhook** (via the Workflows app: *"Post to a channel when a webhook request is received"*) for the channel that should receive alerts.
 2. In the GitHub repo, add the webhook URL as a secret named **`TEAMS_WEBHOOK_URL`** (Settings → Secrets and variables → Actions).
 3. (Optional) Add a repo **variable** `BASE_URL` to point monitoring at a specific environment.
 
-On failure, the workflow posts a Teams card with a link to the run, where the HTML report + failure screenshots/videos/traces are attached as artifacts (kept 30 days).
+On failure, the workflow posts a Teams card containing the **dashboard link**, the **screenshot of each broken page**, and a link to the GitHub run (which also keeps the full HTML report + videos/traces as artifacts for 30 days).
 
 To run more frequently as ad spend ramps up, add cron lines in the workflow, e.g. `*/30 * * * *` for every 30 minutes.
 
