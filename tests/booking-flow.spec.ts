@@ -14,10 +14,10 @@ import { startQuote } from './booking'
  * never creates real bookings or charges.
  */
 for (const loc of STANDARD_LOCATIONS) {
-  test(`booking funnel reaches equipment selection [${loc.slug}]`, async ({ page }) => {
+  test(`booking funnel reaches equipment selection [${loc.slug}]`, async ({ page }, testInfo) => {
     await page.goto(loc.path)
 
-    await startQuote(page, loc)
+    await startQuote(page, loc, testInfo)
 
     // We should land on the booking app with dates carried through the URL.
     await expect(page).toHaveURL(/\/rental\/booking/)

@@ -13,11 +13,13 @@ const dash = (process.env.DASHBOARD_URL || '').replace(/\/?$/, '/')
 const runUrl = process.env.RUN_URL || ''
 const summary = JSON.parse(fs.readFileSync('dashboard/summary.json', 'utf8'))
 
-// Show the screenshot of each broken page (cap at 5 to keep the card sane).
+// Show the screenshot of each broken page (cap at 5 to keep the card sane),
+// plus a link to the recorded video replay of the flow when available.
 const shots = []
 for (const f of summary.failed.slice(0, 5)) {
   shots.push({ type: 'TextBlock', weight: 'Bolder', text: `✗ ${f.name}`, spacing: 'Medium', wrap: true })
   if (f.screenshot && dash) shots.push({ type: 'Image', url: dash + f.screenshot, size: 'Large', altText: `Screenshot of ${f.name}` })
+  if (f.video && dash) shots.push({ type: 'TextBlock', wrap: true, text: `[▶ Watch replay of ${f.name}](${dash + f.video})` })
 }
 
 const card = {
