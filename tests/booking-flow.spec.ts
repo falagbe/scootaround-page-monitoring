@@ -5,26 +5,23 @@ import { startQuote } from './booking'
 /**
  * TIER 3 — End-to-end booking flow (standard city pages).
  *
- * Simulates a real customer: pick a location, choose dates, get a quote, and
- * confirm they reach the equipment-selection step. Validates the whole funnel
- * — page, autocomplete, quote engine, booking app — exactly the end-to-end
- * confidence Ray asked for.
+ * Simulates a real customer through the full funnel: location, dates, quote,
+ * add equipment to cart (real pricing), and on to the checkout / Rider
+ * Information page. Validates the entire journey — page, autocomplete, quote
+ * engine, cart, and checkout.
  *
- * Deliberately STOPS at equipment selection (before payment) so monitoring
- * never creates real bookings or charges.
+ * It STOPS at checkout — never clicks "Confirm" — so monitoring never places
+ * real bookings. If a location has no inventory for the test dates, the funnel
+ * still works: startQuote returns 'no-inventory' and the test passes (the
+ * dashboard shows it as amber, and no alert fires).
  */
 for (const loc of STANDARD_LOCATIONS) {
-  test(`booking funnel reaches equipment selection [${loc.slug}]`, async ({ page }, testInfo) => {
+  test(`booking funnel reaches checkout [${loc.slug}]`, async ({ page }, testInfo) => {
     await page.goto(loc.path)
 
-    await startQuote(page, loc, testInfo)
+    const outcome = await startQuote(page, loc, testInfo)
 
-    // We should land on the booking app with dates carried through the URL.
-    await expect(page).toHaveURL(/\/rental\/booking/)
-    expect(page.url()).toMatch(/startDate=\d{4}-\d{2}-\d{2}/)
-    expect(page.url()).toMatch(/endDate=\d{4}-\d{2}-\d{2}/)
-
-    // The equipment-selection step must render with real equipment options.
-    await expect(page.getByRole('heading', { name: /Choose Equipment/i })).toBeVisible()
+    // startQuote asserts the end state internally; this guards the contract.
+    expect(['checkout', 'no-inventory']).toContain(outcome)
   })
 }

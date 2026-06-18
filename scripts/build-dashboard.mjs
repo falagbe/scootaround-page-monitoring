@@ -65,7 +65,7 @@ for (const spec of specs) {
   if (!m) continue
   const slug = m[1]
   if (!pages.has(slug))
-    pages.set(slug, { slug, name: meta[slug]?.name || titleCase(slug), url: BASE_URL + (meta[slug]?.path || '/'), ok: true, checks: [], thumbAtt: null, failAtt: null, videoAtt: null, journey: new Map() })
+    pages.set(slug, { slug, name: meta[slug]?.name || titleCase(slug), url: BASE_URL + (meta[slug]?.path || '/'), ok: true, inventory: null, checks: [], thumbAtt: null, failAtt: null, videoAtt: null, journey: new Map() })
   const p = pages.get(slug)
   const label = spec.title.replace(slugRe, '').trim()
   p.checks.push({ label, ok: spec.ok })
@@ -78,6 +78,8 @@ for (const spec of specs) {
       if (!spec.ok && !p.failAtt) p.failAtt = a
     } else if (a.name === 'video') {
       if (/funnel/i.test(label) || !p.videoAtt) p.videoAtt = a // prefer the full booking-flow recording
+    } else if (a.name === 'inventory-status') {
+      p.inventory = 'none'
     } else {
       const j = a.name && a.name.match(/^journey::(\d+)::(.+)$/)
       if (j) p.journey.set(Number(j[1]), { n: Number(j[1]), caption: j[2], att: a })
@@ -96,9 +98,14 @@ for (const p of pages.values()) {
   if (p.videoAtt && write(p.videoAtt, `videos/${p.slug}.webm`)) p.video = `videos/${p.slug}.webm`
 }
 
-const all = [...pages.values()].sort((a, b) => Number(a.ok) - Number(b.ok) || a.name.localeCompare(b.name))
+// Three states: down (funnel broken) · warn (works but no inventory) · ok.
+const statusOf = (p) => (!p.ok ? 'down' : p.inventory === 'none' ? 'warn' : 'ok')
+const rank = { down: 0, warn: 1, ok: 2 }
+const all = [...pages.values()].sort((a, b) => rank[statusOf(a)] - rank[statusOf(b)] || a.name.localeCompare(b.name))
 const failed = all.filter((p) => !p.ok)
 const passed = all.filter((p) => p.ok)
+const operational = all.filter((p) => statusOf(p) === 'ok')
+const noInv = all.filter((p) => statusOf(p) === 'warn')
 const generated = new Date().toISOString()
 
 fs.writeFileSync(
@@ -107,6 +114,10 @@ fs.writeFileSync(
 )
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const badgeFor = (st) =>
+  st === 'ok' ? '<span class="badge rounded-pill text-bg-success">Operational</span>'
+  : st === 'warn' ? '<span class="badge rounded-pill text-bg-warning">No inventory</span>'
+  : '<span class="badge rounded-pill text-bg-danger">Down</span>'
 const head = (title, prefix) => `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
@@ -116,7 +127,7 @@ const head = (title, prefix) => `<!doctype html><html lang="en"><head>
   body { background:#f1f5f9; } .brand-bar { background:#001c3c; }
   .page-card { transition:transform .12s ease, box-shadow .12s ease; overflow:hidden; }
   .page-card:hover { transform:translateY(-3px); box-shadow:0 .75rem 1.5rem rgba(0,0,0,.12)!important; }
-  .page-card.ok { border-top:4px solid #16a34a!important; } .page-card.down { border-top:4px solid #dc2626!important; }
+  .page-card.ok { border-top:4px solid #16a34a!important; } .page-card.down { border-top:4px solid #dc2626!important; } .page-card.warn { border-top:4px solid #f59e0b!important; }
   .thumb { overflow:hidden; background:#e2e8f0; } .thumb img { object-position:top; }
   .zoom-hint { position:absolute; right:.5rem; bottom:.5rem; background:rgba(0,0,0,.55); color:#fff; border-radius:.4rem; padding:.1rem .4rem; font-size:.8rem; opacity:0; transition:opacity .12s; }
   .thumb:hover .zoom-hint { opacity:1; } .list-group-item { background:transparent; }
@@ -134,8 +145,9 @@ const stepCard = (s) => `
 const detailHtml = (p) => `${head(esc(p.name) + ' · Test proof', '../')}
 <nav class="navbar brand-bar navbar-dark py-3"><div class="container">
   <a class="navbar-brand fw-bold mb-0 text-white text-decoration-none" href="../index.html"><i class="bi bi-arrow-left"></i> Booking Flow Status</a>
-  <span class="badge fs-6 ${p.ok ? 'text-bg-success' : 'text-bg-danger'}">${p.ok ? 'Operational' : 'Down'}</span>
+  <span class="fs-6">${badgeFor(statusOf(p))}</span>
 </div></nav>
+${statusOf(p) === 'warn' ? '<div class="container pt-3"><div class="alert alert-warning mb-0"><i class="bi bi-info-circle"></i> The booking funnel works, but no equipment was available for the test dates. This is informational, not an outage.</div></div>' : ''}
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
     <h3 class="fw-bold mb-0">${esc(p.name)}</h3>
@@ -164,6 +176,7 @@ const checkRow = (c) =>
   `<li class="list-group-item d-flex align-items-center gap-2 px-0 py-1 border-0 small"><i class="bi ${c.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i><span>${esc(c.label)}</span></li>`
 
 const cardFor = (p) => {
+  const st = statusOf(p)
   const passN = p.checks.filter((c) => c.ok).length
   const thumb = p.img
     ? `<a href="pages/${p.slug}.html" class="thumb ratio ratio-16x9 d-block text-decoration-none">
@@ -171,14 +184,15 @@ const cardFor = (p) => {
     : `<div class="thumb ratio ratio-16x9 bg-light d-flex align-items-center justify-content-center text-muted small">no screenshot</div>`
   return `
   <div class="col">
-    <div class="card h-100 shadow-sm border-0 page-card ${p.ok ? 'ok' : 'down'}">
+    <div class="card h-100 shadow-sm border-0 page-card ${st}">
       ${thumb}
       <div class="card-body pb-2">
         <div class="d-flex justify-content-between align-items-start mb-1">
           <h6 class="card-title fw-bold mb-0">${esc(p.name)}</h6>
-          <span class="badge rounded-pill ${p.ok ? 'text-bg-success' : 'text-bg-danger'}">${p.ok ? 'Operational' : 'Down'}</span>
+          ${badgeFor(st)}
         </div>
         <div class="text-muted small mb-2">${passN}/${p.checks.length} checks passing${p.video ? ' · <i class="bi bi-camera-reels"></i> recorded' : ''}</div>
+        ${st === 'warn' ? '<div class="small text-warning-emphasis mb-2"><i class="bi bi-info-circle"></i> No equipment available for test dates</div>' : ''}
         <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="collapse" data-bs-target="#d-${p.slug}"><i class="bi bi-list-check"></i> Checks</button>
         <div class="collapse mt-2" id="d-${p.slug}"><ul class="list-group list-group-flush mb-0">${p.checks.map(checkRow).join('')}</ul></div>
       </div>
@@ -193,20 +207,25 @@ const cardFor = (p) => {
 const stat = (label, value, cls) =>
   `<div class="col"><div class="card border-0 shadow-sm text-center py-3"><div class="display-6 fw-bold ${cls}">${value}</div><div class="text-muted small text-uppercase">${label}</div></div></div>`
 
-const allHealthy = failed.length === 0
+const headlineClass = failed.length ? 'text-bg-danger' : noInv.length ? 'text-bg-warning' : 'text-bg-success'
+const headline = failed.length
+  ? `<i class="bi bi-exclamation-triangle"></i> ${failed.length} down`
+  : noInv.length
+    ? `<i class="bi bi-check-circle"></i> Operational · ${noInv.length} no inventory`
+    : '<i class="bi bi-check-circle"></i> All systems operational'
 const index = `${head('Scootaround Booking Flow Status', '')}
   <meta http-equiv="refresh" content="300">
   <nav class="navbar brand-bar navbar-dark py-3"><div class="container">
     <span class="navbar-brand fw-bold mb-0"><i class="bi bi-activity"></i> Scootaround · Booking Flow Status</span>
-    <span class="badge fs-6 ${allHealthy ? 'text-bg-success' : 'text-bg-danger'}">${allHealthy ? '<i class="bi bi-check-circle"></i> All systems operational' : '<i class="bi bi-exclamation-triangle"></i> ' + failed.length + ' down'}</span>
+    <span class="badge fs-6 ${headlineClass}">${headline}</span>
   </div></nav>
   <div class="container py-4">
-    <p class="text-muted">Automated end-to-end monitoring of every location &amp; port rental booking flow. Updated ${esc(generated)} · auto-refreshes every 5&nbsp;min. Click any card for the <strong>video replay &amp; step-by-step proof</strong>.</p>
+    <p class="text-muted">Automated end-to-end monitoring of every location &amp; port rental booking flow — from opening the page through to the checkout step. Updated ${esc(generated)} · auto-refreshes every 5&nbsp;min. Click any card for the <strong>video replay &amp; step-by-step proof</strong>.</p>
     <div class="row row-cols-2 row-cols-md-4 g-3 mb-4">
-      ${stat('Pages monitored', all.length, 'text-dark')}
-      ${stat('Operational', passed.length, 'text-success')}
+      ${stat('Operational', operational.length, 'text-success')}
+      ${stat('No inventory', noInv.length, noInv.length ? 'text-warning' : 'text-muted')}
       ${stat('Down', failed.length, failed.length ? 'text-danger' : 'text-muted')}
-      ${stat('Checks run', all.reduce((n, p) => n + p.checks.length, 0), 'text-dark')}
+      ${stat('Pages monitored', all.length, 'text-dark')}
     </div>
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">${all.map(cardFor).join('')}</div>
     <p class="text-center text-muted small mt-4 mb-0">Generated by the Scootaround page-monitoring suite · ${passed.length}/${all.length} healthy</p>
