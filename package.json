@@ -8,6 +8,8 @@
     "test:headed": "playwright test --headed",
     "report": "playwright show-report",
     "dashboard": "node scripts/build-dashboard.mjs",
+    "test:main": "playwright test -c playwright.main.config.ts",
+    "dashboard:main": "node scripts/build-dashboard-main.mjs",
     "inspect": "node scripts/inspect-page.mjs"
   },
   "devDependencies": {

@@ -4,7 +4,11 @@ test-results/
 blob-report/
 playwright/.cache/
 dashboard/
+dashboard-main/
 results.json
+results-main.json
+test-results-main/
+playwright-report-main/
 *.png
 *.zip
 .env

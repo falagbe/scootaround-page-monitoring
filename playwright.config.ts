@@ -8,6 +8,9 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './tests',
+  // The main-site (scootaround.com) monitor runs locally via its own config
+  // (playwright.main.config.ts) — keep it out of the GitHub Actions run.
+  testIgnore: 'main-site.spec.ts',
   // A monitoring run should fail fast and clearly.
   timeout: 60_000,
   expect: { timeout: 15_000 },
